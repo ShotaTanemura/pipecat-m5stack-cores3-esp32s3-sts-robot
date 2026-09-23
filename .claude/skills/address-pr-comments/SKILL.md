@@ -87,13 +87,14 @@ Read and address review comments on an existing pull request with comprehensive 
      fi
    done
    
-   # For threads with >50 comments, fetch additional pages
+   # For threads with >50 comments, fetch and merge additional comment pages
    # (Most threads have <50 comments; only paginate when needed)
-   for thread in all_threads where comments.pageInfo.hasNextPage; do
-     thread_comments_cursor="${thread.comments.pageInfo.endCursor}"
-     while [ -n "$thread_comments_cursor" ]; do
+   for thread_id in $(echo "$all_threads" | jq -r '.[] | select(.comments.pageInfo.hasNextPage) | .id'); do
+     thread_comments_cursor=$(echo "$all_threads" | jq -r --arg tid "$thread_id" '.[] | select(.id == $tid) | .comments.pageInfo.endCursor')
+
+     while [ -n "$thread_comments_cursor" ] && [ "$thread_comments_cursor" != "null" ]; do
        result=$(gh api graphql -f query='
-       query($owner: String!, $repo: String!, $threadId: ID!, $cursor: String) {
+       query($threadId: ID!, $cursor: String) {
          node(id: $threadId) {
            ... on PullRequestReviewThread {
              comments(first: 50, after: $cursor) {
@@ -104,10 +105,18 @@ Read and address review comments on an existing pull request with comprehensive 
              }
            }
          }
-       }' -f owner="$OWNER" -f repo="$REPO" -f threadId="${thread.id}" -f cursor="$thread_comments_cursor")
-       
-       # Append additional comments to thread
-       # Update thread_comments_cursor if hasNextPage is true
+       }' -f threadId="$thread_id" -f cursor="$thread_comments_cursor")
+
+       new_nodes=$(echo "$result" | jq -c '.data.node.comments.nodes')
+       all_threads=$(echo "$all_threads" | jq --arg tid "$thread_id" --argjson new "$new_nodes" \
+         '(.[] | select(.id == $tid) | .comments.nodes) += $new')
+
+       has_next=$(echo "$result" | jq -r '.data.node.comments.pageInfo.hasNextPage')
+       if [ "$has_next" = "true" ]; then
+         thread_comments_cursor=$(echo "$result" | jq -r '.data.node.comments.pageInfo.endCursor')
+       else
+         thread_comments_cursor=""
+       fi
      done
    done
    
@@ -335,7 +344,7 @@ Read and address review comments on an existing pull request with comprehensive 
        location=$(echo "$thread_json" | jq -r '.location')
        
        # Reply to inline comment
-       gh api repos/$OWNER/$REPO/pulls/comments/$comment_db_id/replies \
+       gh api repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments/$comment_db_id/replies \
            -X POST \
            -f body="$reply_body"
        
@@ -437,16 +446,22 @@ Read and address review comments on an existing pull request with comprehensive 
    ```bash
    echo "Resolving addressed review threads..."
    
-   # For Discuss threads, ask user confirmation first
-   jq -c '.threads[] | select(.classification == "Discuss" and .should_resolve == true)' "$MANIFEST_FILE" | while IFS= read -r thread_json; do
+   # For Discuss threads, ask user confirmation first. Process substitution
+   # (not a pipe) so the loop body doesn't run in a subshell — needed both
+   # for should_resolve to persist and so `read -p` below isn't sharing its
+   # stdin with the loop's own `read -r thread_json` (a pipe would have both
+   # reads competing for the same stream, consuming lines meant for the
+   # other). `read -p` still reads explicitly from the terminal so a
+   # non-interactive stdin here can't be mistaken for the user's answer.
+   while IFS= read -r thread_json; do
        location=$(echo "$thread_json" | jq -r '.location')
        thread_id=$(echo "$thread_json" | jq -r '.thread_id')
        
-       read -p "Should I resolve the Discuss thread at $location? [yes/no] " answer
+       read -p "Should I resolve the Discuss thread at $location? [yes/no] " answer < /dev/tty
        if [ "$answer" != "yes" ]; then
            jq --arg tid "$thread_id" '(.threads[] | select(.thread_id == $tid) | .should_resolve) = false' "$MANIFEST_FILE" > "$MANIFEST_FILE.tmp" && mv "$MANIFEST_FILE.tmp" "$MANIFEST_FILE"
        fi
-   done
+   done < <(jq -c '.threads[] | select(.classification == "Discuss" and .should_resolve == true)' "$MANIFEST_FILE")
    
    # Build batch mutation for all threads to resolve
    mutation_body=""

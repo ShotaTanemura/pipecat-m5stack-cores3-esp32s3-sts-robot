@@ -16,10 +16,10 @@ Follow these steps precisely:
    in step 3. The plan you write must end with a concrete verification section: what to run, what
    to expect. Get approval via `ExitPlanMode`.
 
-2. **Branch.** Refuse to proceed if `git status --short` is not empty, or if
-   `git branch --show-current` prints `main` — ask the user to resolve either before continuing.
-   Otherwise `git switch -c <type>/<slug>`, where `<type>` is `feat`/`fix`/`chore`/`docs`/`refactor`
-   matching the change and `<slug>` is a kebab-case rendering of the approved plan's title.
+2. **Branch.** Refuse to proceed if `git status --short` is not empty — ask the user to commit or
+   stash before continuing. Otherwise `git switch -c <type>/<slug>` from the current HEAD
+   (normally `main`), where `<type>` is `feat`/`fix`/`chore`/`docs`/`refactor` matching the change
+   and `<slug>` is a kebab-case rendering of the approved plan's title.
 
 3. **Implement.** Work the plan. Commit as you go using Conventional Commits
    (`feat:`/`fix:`/`docs:`/`refactor:`/`chore:`), one commit per logical unit, each carrying this
