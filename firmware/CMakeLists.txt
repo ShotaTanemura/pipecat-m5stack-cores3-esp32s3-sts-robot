@@ -1,21 +1,19 @@
 cmake_minimum_required(VERSION 3.19)
 
-if(NOT DEFINED ENV{WIFI_SSID} OR NOT DEFINED ENV{WIFI_PASSWORD})
-  message(FATAL_ERROR "Env variables WIFI_SSID and WIFI_PASSWORD must be set")
-endif()
-
-add_compile_definitions(WIFI_SSID="$ENV{WIFI_SSID}")
-add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
-
-if(NOT DEFINED ENV{PIPECAT_SMALLWEBRTC_URL})
-  message(FATAL_ERROR "Env variable PIPECAT_SMALLWEBRTC_URL must be set")
-endif()
+foreach(var WIFI_SSID WIFI_PASSWORD PIPECAT_SMALLWEBRTC_URL)
+  if(NOT DEFINED ENV{${var}} OR "$ENV{${var}}" STREQUAL "")
+    message(FATAL_ERROR "Env variable ${var} must be set -- see firmware/.env.example")
+  endif()
+  # Accept .env values written quoted or bare: the documented bash loader strips
+  # surrounding quotes and fish's cannot, and a stray quote lands inside the string
+  # literal as a user-defined-literal suffix, failing the build far from the cause.
+  string(REGEX REPLACE "^[\"'](.*)[\"']$" "\\1" value "$ENV{${var}}")
+  add_compile_definitions(${var}="${value}")
+endforeach()
 
 if(DEFINED ENV{LOG_DATACHANNEL_MESSAGES})
   add_compile_definitions(LOG_DATACHANNEL_MESSAGES="1")
 endif()
-
-add_compile_definitions(PIPECAT_SMALLWEBRTC_URL="$ENV{PIPECAT_SMALLWEBRTC_URL}")
 
 # pipecat-esp32's esp32-m5stack-cores3 project has no components of its own -- it
 # builds against the shared WebRTC/SRTP/Opus components under the esp32-s3-box-3
