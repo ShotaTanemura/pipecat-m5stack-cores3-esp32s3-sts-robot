@@ -132,11 +132,12 @@ void pipecat_rtvi_send_client_ready() {
     return;
   }
 
-  // The server rejects a client-ready with no `version` ("Client version
-  // unknown") -- declare the server's own RTVI.PROTOCOL_VERSION. This client
-  // only ever parses bot-started-speaking / bot-stopped-speaking / bot-tts-text,
-  // none of which differ between the legacy (1.x) and current bot-output wire
-  // formats, so advertising the current protocol version is safe.
+  // A client-ready with no `version` still proceeds (the server just logs a
+  // "Client version unknown" warning and sends back an error-response), but
+  // declare the server's own RTVI.PROTOCOL_VERSION anyway to avoid that noise.
+  // This client only ever parses bot-started-speaking / bot-stopped-speaking /
+  // bot-tts-text, none of which differ between the legacy (1.x) and current
+  // bot-output wire formats, so advertising the current protocol version is safe.
   cJSON *j_data = cJSON_AddObjectToObject(msg->msg, "data");
   if (j_data != NULL) {
     cJSON_AddStringToObject(j_data, "version", "2.1.0");
