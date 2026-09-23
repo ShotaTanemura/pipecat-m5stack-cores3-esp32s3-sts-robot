@@ -43,6 +43,17 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
    `--host` must be the server's LAN IP (not `localhost`) since that's the address
    the device actually connects to.
 
+### Linting
+
+Ruff is configured in `pyproject.toml`. Run it by hand with:
+
+```bash
+uv run ruff format . && uv run ruff check --fix .
+```
+
+Claude Code also runs it automatically on every `agent/**/*.py` edit via the
+`.claude/hooks/ruff-agent.sh` PostToolUse hook.
+
 ## Project Structure
 
 ```
