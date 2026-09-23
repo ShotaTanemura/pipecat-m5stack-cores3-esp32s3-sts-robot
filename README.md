@@ -18,3 +18,18 @@ the [PlatformIO](https://platformio.org/) CLI) with [mise](https://mise.jdx.dev/
 
 This provides `python`, `uv`, and `pio` at the versions pinned in `mise.toml`, which is
 the source of truth for this toolchain.
+
+## Agent server
+
+`agent/` is the Pipecat voice-agent server the ESP32 device talks to over
+SmallWebRTC. See `agent/README.md` for setup and how to run it:
+
+```sh
+cd agent/server
+uv sync
+uv run bot.py -t webrtc --esp32 --host <server LAN IP>
+```
+
+`--esp32` and a LAN-reachable `--host` (not `localhost`) are required — the device
+firmware needs SDP munging that only applies in this mode, and it connects to the
+server's LAN IP, not the server's own loopback address.
