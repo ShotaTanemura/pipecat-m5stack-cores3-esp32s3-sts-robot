@@ -122,11 +122,39 @@ void pipecat_init_rtvi(PeerConnection *connection,
 }
 
 void pipecat_rtvi_send_client_ready() {
+  if (peer_connection == NULL) {
+    ESP_LOGE(LOG_TAG, "Cannot send RTVI client-ready: no peer connection");
+    return;
+  }
+
   rtvi_msg_t *msg = create_rtvi_message("client-ready");
+  if (msg == NULL) {
+    return;
+  }
+
+  // The server rejects a client-ready with no `version` ("Client version
+  // unknown") -- declare the server's own RTVI.PROTOCOL_VERSION. This client
+  // only ever parses bot-started-speaking / bot-stopped-speaking / bot-tts-text,
+  // none of which differ between the legacy (1.x) and current bot-output wire
+  // formats, so advertising the current protocol version is safe.
+  cJSON *j_data = cJSON_AddObjectToObject(msg->msg, "data");
+  if (j_data != NULL) {
+    cJSON_AddStringToObject(j_data, "version", "2.1.0");
+    cJSON *j_about = cJSON_AddObjectToObject(j_data, "about");
+    if (j_about != NULL) {
+      cJSON_AddStringToObject(j_about, "library", "pipecat-esp32");
+      cJSON_AddStringToObject(j_about, "platform", "esp32s3");
+    }
+  }
 
   char *msg_str = rtvi_message_to_string(msg);
+  if (msg_str == NULL) {
+    destroy_rtvi_message(msg);
+    return;
+  }
 
   peer_connection_datachannel_send(peer_connection, msg_str, strlen(msg_str));
+  ESP_LOGI(LOG_TAG, "Sent RTVI client-ready");
 
   cJSON_free(msg_str);
 

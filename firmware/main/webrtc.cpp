@@ -50,6 +50,9 @@ static void pipecat_ondatachannel_onopen_task(void *userdata) {
                                          0, 0, (char *)"rtvi-ai",
                                          (char *)"") != -1) {
     ESP_LOGI(LOG_TAG, "DataChannel created");
+    // Tells the bot the client is ready for audio; the server only starts the
+    // GPT-Live session (and begins accepting mic audio) after this arrives.
+    pipecat_rtvi_send_client_ready();
   } else {
     ESP_LOGE(LOG_TAG, "Failed to create DataChannel");
   }
