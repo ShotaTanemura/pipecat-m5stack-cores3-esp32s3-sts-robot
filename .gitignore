@@ -1,0 +1,10 @@
+# Python / uv
+.venv/
+__pycache__/
+
+# PlatformIO
+.pio/
+
+# mise
+mise.local.toml
+.mise.local.toml

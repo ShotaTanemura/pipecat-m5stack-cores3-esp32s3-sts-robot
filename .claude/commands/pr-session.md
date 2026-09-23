@@ -27,7 +27,7 @@ Follow these steps precisely:
    during this step so the record ships in the same PR as the code it justifies.
 
 4. **Verify.** Discover whatever verification the repo has right now — `Makefile` targets,
-   `pyproject.toml`/`uv`, `pytest`, `idf.py build`, `.github/workflows/*` — and run what applies.
+   `pyproject.toml`/`uv`, `pytest`, `pio run`, `.github/workflows/*` — and run what applies.
    Also run the plan's own verification section from step 1. If nothing runnable is found, say so
    explicitly in your report rather than silently skipping this step. Keep the output; it goes in
    the PR body.
