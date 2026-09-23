@@ -13,6 +13,23 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Edit(/agent/**/*.py)",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff-agent.sh\""
+          },
+          {
+            "type": "command",
+            "if": "Write(/agent/**/*.py)",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff-agent.sh\""
+          }
+        ]
+      }
     ]
   }
 }
