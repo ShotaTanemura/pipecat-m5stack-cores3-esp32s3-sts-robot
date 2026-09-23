@@ -4,9 +4,10 @@ foreach(var WIFI_SSID WIFI_PASSWORD PIPECAT_SMALLWEBRTC_URL)
   if(NOT DEFINED ENV{${var}})
     message(FATAL_ERROR "Env variable ${var} must be set -- see firmware/.env.example")
   endif()
-  # Accept .env values written quoted or bare: the documented bash loader strips
-  # surrounding quotes and fish's cannot, and a stray quote lands inside the string
-  # literal as a user-defined-literal suffix, failing the build far from the cause.
+  # Accept .env values written quoted or bare: a stray surrounding quote (e.g. from
+  # an env loaded by a mechanism other than firmware/README.md's documented ones)
+  # lands inside the string literal as a user-defined-literal suffix, failing the
+  # build far from the cause.
   string(REGEX REPLACE "^[\"'](.*)[\"']$" "\\1" value "$ENV{${var}}")
   if(value STREQUAL "")
     message(FATAL_ERROR "Env variable ${var} must be set -- see firmware/.env.example")

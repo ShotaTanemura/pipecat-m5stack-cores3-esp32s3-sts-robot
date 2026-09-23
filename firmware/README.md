@@ -50,7 +50,7 @@ cd firmware
 cp .env.example .env   # edit it, then:
 for line in (grep -v '^#' .env | grep =)
     set -l parts (string split -m1 = $line)
-    set -gx $parts[1] (string trim --chars="\"'" -- $parts[2])
+    set -gx $parts[1] $parts[2]
 end
 ```
 
