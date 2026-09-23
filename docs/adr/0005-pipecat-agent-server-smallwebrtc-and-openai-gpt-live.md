@@ -53,12 +53,17 @@ was scaffolded with `openai_realtime` as a placeholder, then hand-swapped to
 regenerate the Realtime version and silently revert this decision — check this ADR before
 re-scaffolding.
 
-**Known gap, deferred to the next PR:** Pipecat's `SmallWebRTCRequestHandler` takes an
-`esp32_mode` flag that applies ESP32-specific SDP munging
-(`pipecat/transports/smallwebrtc/request_handler.py`), but the CLI's generated `bot.py`
-never sets it. The scaffolded server likely will not complete a WebRTC handshake with the
-`pipecat-esp32` device until that is switched on — tracked as follow-up work, not decided
-here.
+**ESP32 SDP munging is a run-time flag, not a code gap.** An earlier version of this ADR
+claimed the CLI's generated `bot.py` needed a follow-up code change to enable
+`SmallWebRTCRequestHandler`'s `esp32_mode`. That was wrong: Pipecat 1.11's development
+runner (`pipecat.runner.run`) already exposes this as `--esp32`, which it wires straight
+into `esp32_mode` when building the transport — no `bot.py` change needed. The runner also
+refuses `--esp32` with `--host localhost`, since SDP munging needs a LAN-reachable address.
+Launch with:
+
+```sh
+uv run bot.py -t webrtc --esp32 --host <server LAN IP>
+```
 
 ### Positive Consequences
 
@@ -72,8 +77,9 @@ here.
   which a careless re-scaffold could silently undo.
 * GPT-Live full-duplex turn detection is untested against the ESP32 device's actual audio
   path (mic gain, VAD-free interruption handling) until the next PR's hardware pass.
-* `esp32_mode` SDP munging is not yet enabled, so end-to-end connectivity with the device
-  is unverified by this PR.
+* An actual handshake and end-to-end call with the physical device is unverified by this
+  PR — the server was confirmed to start and serve `/api/offer` under `--esp32 --host
+  <LAN IP>` (via curl), but not against real device firmware.
 
 ## Pros and Cons of the Options
 
@@ -95,8 +101,8 @@ here.
 
 * Good, because it's exactly what `pipecat-esp32` speaks — a plain `POST /api/offer`.
 * Good, because it needs no external service account (unlike Daily) for local development.
-* Bad, because Pipecat's ESP32-specific SDP munging for it is opt-in and not yet enabled
-  (see gap above).
+* Good, because its ESP32-specific SDP munging is a runner flag (`--esp32 --host <LAN IP>`),
+  not code the server needs to carry.
 
 ### OpenAI GPT-Live (S2S vendor)
 

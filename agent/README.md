@@ -35,12 +35,13 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 4. **Run the bot**:
 
    ```bash
-   uv run bot.py
+   uv run bot.py -t webrtc --esp32 --host <server LAN IP>
    ```
 
-   The runner serves every transport; the caller selects which one (a web/mobile
-   client picks its transport when it connects; a telephony provider connects to
-   `/ws`).
+   This project's client is the `pipecat-esp32` device firmware, which needs two
+   non-default flags: `--esp32` enables the SDP munging the device requires, and
+   `--host` must be the server's LAN IP (not `localhost`) since that's the address
+   the device actually connects to.
 
 ## Project Structure
 
