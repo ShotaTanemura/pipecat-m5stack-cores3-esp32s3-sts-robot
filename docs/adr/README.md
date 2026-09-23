@@ -24,7 +24,7 @@ explains.
 ## Numbering
 
 Filenames are `NNNN-kebab-case-title.md`, zero-padded to four digits (`0001`, `0002`, …). The
-next number is the highest existing number on `main` plus one.
+next number is the highest existing number in `docs/adr/` on your current branch, plus one.
 
 Because this repo is worked on from multiple git worktrees, two branches can pick the same next
 number concurrently. Whichever branch merges second renumbers its file (filename, the title
