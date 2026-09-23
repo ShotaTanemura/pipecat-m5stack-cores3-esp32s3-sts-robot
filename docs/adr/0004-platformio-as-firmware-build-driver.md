@@ -1,6 +1,6 @@
 # Use the PlatformIO CLI as the firmware build driver
 
-* Status: proposed
+* Status: superseded by [ADR-0006](0006-build-firmware-with-esp-idf-directly.md)
 * Deciders:
 * Date: 2026-09-23
 

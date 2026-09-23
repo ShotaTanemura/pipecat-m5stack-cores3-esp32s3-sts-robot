@@ -1,4 +1,3 @@
 [tools]
 python = "3.12.14"
 uv = "0.12.17"
-"pipx:platformio" = "6.2.0"
