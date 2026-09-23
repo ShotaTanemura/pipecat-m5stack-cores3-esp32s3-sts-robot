@@ -1,0 +1,3 @@
+[submodule "firmware/deps/pipecat-esp32"]
+	path = firmware/deps/pipecat-esp32
+	url = https://github.com/pipecat-ai/pipecat-esp32.git
