@@ -7,7 +7,7 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 - **Bot Type**: Web
 - **Transport(s)**: SmallWebRTC
 - **Pipeline**: Realtime
-  - **Service**: OpenAI Realtime
+  - **Service**: OpenAI GPT-Live
 
 ## Setup
 
