@@ -1,13 +1,16 @@
 cmake_minimum_required(VERSION 3.19)
 
 foreach(var WIFI_SSID WIFI_PASSWORD PIPECAT_SMALLWEBRTC_URL)
-  if(NOT DEFINED ENV{${var}} OR "$ENV{${var}}" STREQUAL "")
+  if(NOT DEFINED ENV{${var}})
     message(FATAL_ERROR "Env variable ${var} must be set -- see firmware/.env.example")
   endif()
   # Accept .env values written quoted or bare: the documented bash loader strips
   # surrounding quotes and fish's cannot, and a stray quote lands inside the string
   # literal as a user-defined-literal suffix, failing the build far from the cause.
   string(REGEX REPLACE "^[\"'](.*)[\"']$" "\\1" value "$ENV{${var}}")
+  if(value STREQUAL "")
+    message(FATAL_ERROR "Env variable ${var} must be set -- see firmware/.env.example")
+  endif()
   add_compile_definitions(${var}="${value}")
 endforeach()
 
