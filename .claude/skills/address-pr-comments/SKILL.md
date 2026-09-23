@@ -38,12 +38,11 @@ Read and address review comments on an existing pull request with comprehensive 
    Use GraphQL to get structured thread data with thread ID (the `id` field in `reviewThreads.nodes`) needed for resolution:
    
    ```bash
-   # Extract repository owner and name from git remote (faster than API call)
-   REMOTE_URL=$(git config --get remote.origin.url)
-   REMOTE_REPO="${REMOTE_URL##*github.com[:/]}"
-   REMOTE_REPO="${REMOTE_REPO%.git}"
-   OWNER="${REMOTE_REPO%%/*}"
-   REPO="${REMOTE_REPO#*/}"
+   # Resolve repository owner and name via gh itself, not a substring match on
+   # the remote URL — a substring match breaks on SSH config Host aliases and
+   # GitHub Enterprise remotes, where the string "github.com" may not appear.
+   OWNER=$(gh repo view --json owner --jq .owner.login)
+   REPO=$(gh repo view --json name --jq .name)
    
    # Fetch review threads with pagination
    threads_cursor=""
@@ -454,7 +453,10 @@ Read and address review comments on an existing pull request with comprehensive 
    alias_counter=0
    declare -a thread_ids
    
-   jq -c '.threads[] | select(.should_resolve == true)' "$MANIFEST_FILE" | while IFS= read -r thread_json; do
+   # Process substitution, not a pipe: `cmd | while read` runs the loop body in
+   # a subshell, so mutation_body/thread_ids set inside it would vanish once
+   # the loop exits. `< <(cmd)` keeps the loop in the current shell.
+   while IFS= read -r thread_json; do
        thread_id=$(echo "$thread_json" | jq -r '.thread_id')
        thread_ids[$alias_counter]="$thread_id"
        mutation_body="${mutation_body}
@@ -462,7 +464,7 @@ Read and address review comments on an existing pull request with comprehensive 
          thread { id isResolved }
        }"
        ((alias_counter++))
-   done
+   done < <(jq -c '.threads[] | select(.should_resolve == true)' "$MANIFEST_FILE")
    
    # Execute batch mutation (all threads in one API call)
    if [ -n "$mutation_body" ]; then
@@ -501,7 +503,11 @@ Read and address review comments on an existing pull request with comprehensive 
     failed_resolutions=()
     resolved_count=0
     
-    jq -c '.threads[]' "$MANIFEST_FILE" | while IFS= read -r thread_json; do
+    # Process substitution, not a pipe: `cmd | while read` runs the loop body
+    # in a subshell, so failed_replies/failed_resolutions/resolved_count set
+    # inside it would vanish once the loop exits, and every failure below
+    # would go unreported. `< <(cmd)` keeps the loop in the current shell.
+    while IFS= read -r thread_json; do
         location=$(echo "$thread_json" | jq -r '.location')
         reply_sent=$(echo "$thread_json" | jq -r '.status.reply_sent')
         should_resolve=$(echo "$thread_json" | jq -r '.should_resolve')
@@ -515,16 +521,16 @@ Read and address review comments on an existing pull request with comprehensive 
         elif [ "$resolved" = "true" ]; then
             ((resolved_count++))
         fi
-    done
+    done < <(jq -c '.threads[]' "$MANIFEST_FILE")
     
-    jq -c '.pr_comments[]' "$MANIFEST_FILE" | while IFS= read -r comment_json; do
+    while IFS= read -r comment_json; do
         author=$(echo "$comment_json" | jq -r '.author')
         reply_sent=$(echo "$comment_json" | jq -r '.status.reply_sent')
         
         if [ "$reply_sent" != "true" ]; then
             failed_replies+=("PR comment by @$author")
         fi
-    done
+    done < <(jq -c '.pr_comments[]' "$MANIFEST_FILE")
     
     if [ ${#failed_replies[@]} -gt 0 ]; then
         echo "ERROR: Failed to reply to:"
@@ -706,11 +712,9 @@ If a comment is deleted between fetch and reply:
 
 ### Duplicate retry (idempotency)
 
-Before posting each reply, check for existing replies:
-```bash
-gh api repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments \
-    | jq ".[] | select(.in_reply_to_id == $COMMENT_ID and .user.login == \"$BOT_USER\")"
-```
+Use the same `existing_replies` cache built once in step 8 (paginated, fetched before the reply
+loop) — do not re-fetch per comment here with an unpaginated call; on a PR with more than one page
+of comments that would miss a reply that exists on a later page and post a duplicate.
 
 If reply already exists:
 - Skip posting (idempotent operation)
