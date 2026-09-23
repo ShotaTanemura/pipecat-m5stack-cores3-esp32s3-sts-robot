@@ -56,6 +56,11 @@ static rtvi_msg_t *create_rtvi_message(const char *type) {
   }
 
   rtvi_msg_t *msg = (rtvi_msg_t *)malloc(sizeof(rtvi_msg_t));
+  if (msg == NULL) {
+    cJSON_Delete(j_msg);
+    ESP_LOGE(LOG_TAG, "Unable to create RTVI message");
+    return NULL;
+  }
   msg->msg = j_msg;
 
   return msg;
