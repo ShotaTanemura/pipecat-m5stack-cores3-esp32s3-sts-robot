@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+## PR workflow
+
+Changes go through the workflow in `.claude/commands/pr-session.md`. For a trivial,
+obviously-correct change, say so and confirm before skipping it.
+
 ## Architecture Decision Records
 
 Before proposing or changing architecture, read `docs/adr/` for prior decisions.
