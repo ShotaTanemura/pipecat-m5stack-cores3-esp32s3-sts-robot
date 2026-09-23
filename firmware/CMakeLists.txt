@@ -12,8 +12,19 @@ foreach(var WIFI_SSID WIFI_PASSWORD PIPECAT_SMALLWEBRTC_URL)
   if(value STREQUAL "")
     message(FATAL_ERROR "Env variable ${var} must be set -- see firmware/.env.example")
   endif()
+  set(${var}_value "${value}")
   add_compile_definitions(${var}="${value}")
 endforeach()
+
+# A PIPECAT_SMALLWEBRTC_URL without an explicit port silently dials port 80, where
+# nothing listens -- the agent server is on 7860 by default. On device that surfaces
+# only as an HTTP connect failure and a reboot loop, so catch it here instead.
+if(NOT PIPECAT_SMALLWEBRTC_URL_value MATCHES "^https?://[^/:]+:[0-9]+/.+$")
+  message(FATAL_ERROR
+    "PIPECAT_SMALLWEBRTC_URL must be http(s)://<host>:<port>/<path> with an explicit "
+    "port -- got '${PIPECAT_SMALLWEBRTC_URL_value}'. The agent server listens on 7860 "
+    "by default, e.g. http://192.168.1.10:7860/api/offer. See firmware/.env.example.")
+endif()
 
 if(DEFINED ENV{LOG_DATACHANNEL_MESSAGES})
   add_compile_definitions(LOG_DATACHANNEL_MESSAGES="1")
