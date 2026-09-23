@@ -41,15 +41,19 @@ Follow these steps precisely:
    The PR body must include: a summary of the change, the approved plan from step 1 (lightly
    trimmed), and the verification results from step 4.
 
-6. **Review.** Run `/code-review` against the draft PR just opened.
+6. **Review.** Run `/code-review` against the draft PR just opened. `code-review` returns its
+   findings directly to this session rather than posting to GitHub — `address-pr-comments` in
+   step 7 only operates on PR comments, so post the findings as one PR comment yourself
+   (`gh pr comment <number> --body "<findings, formatted>"`) before moving on. Skip this step
+   entirely if `code-review` reports no findings.
 
 7. **Address.** Run the `address-pr-comments` skill against the same PR. Every finding gets an
    explicit disposition (implement / decline / defer / discuss); anything touching design or scope
    is brought back to the user per that skill's triage flow, never auto-applied.
 
-   Known limitation: `/code-review` posts its findings as a single PR-level comment, not inline
-   review threads. `address-pr-comments` still replies to it correctly, but its thread-resolution
-   step only applies to inline threads and stays inert here — expected, not a bug to chase.
+   Known limitation: findings arrive as a single PR-level comment, not inline review threads.
+   `address-pr-comments` still replies to it correctly, but its thread-resolution step only
+   applies to inline threads and stays inert here — expected, not a bug to chase.
 
 8. **Ready.** Once every finding from step 7 has a disposition and any resulting fixes are pushed,
    run `gh pr ready`. Report the PR URL, a summary of what was built, what the review found, and how
