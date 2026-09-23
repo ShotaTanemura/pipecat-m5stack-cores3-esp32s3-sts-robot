@@ -92,9 +92,6 @@ scaffold:
 - **Half-duplex audio.** CoreS3 shares one I2S bus between mic and speaker, so
   `media.cpp` stops the mic while the bot is speaking -- the device cannot be
   interrupted by voice.
-- **Opus decode buffer sizing.** `media.cpp` passes `PCM_BUFFER_SIZE` (640) to
-  `opus_decode` as a *sample* count against a 640-*byte* buffer; an unusually long
-  server frame could overrun it.
 - **Reconnect is a reboot.** Any WebRTC disconnect, or a malformed signaling
   response, calls `esp_restart()` rather than retrying in place.
 - **The display only shows the boot banner.** `rtvi.cpp` never sends

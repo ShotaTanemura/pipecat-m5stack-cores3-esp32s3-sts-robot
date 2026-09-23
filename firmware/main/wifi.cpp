@@ -9,9 +9,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <atomic>
+
 #include "main.h"
 
-static bool g_wifi_connected = false;
+static std::atomic<bool> g_wifi_connected = false;
 
 static void pipecat_event_handler(void *arg, esp_event_base_t event_base,
                                   int32_t event_id, void *event_data) {
@@ -21,11 +23,14 @@ static void pipecat_event_handler(void *arg, esp_event_base_t event_base,
       esp_wifi_connect();
       s_retry_num++;
       ESP_LOGI(LOG_TAG, "retry to connect to the AP");
+    } else {
+      ESP_LOGE(LOG_TAG, "connect to the AP failed, restarting");
+      esp_restart();
     }
-    ESP_LOGI(LOG_TAG, "connect to the AP fail");
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(LOG_TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+    s_retry_num = 0;
     g_wifi_connected = true;
   }
 }

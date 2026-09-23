@@ -28,10 +28,21 @@ void pipecat_send_audio_task(void *user_data) {
 
 static void pipecat_ondatachannel_onmessage_task(char *msg, size_t len,
                                                  void *userdata, uint16_t sid) {
+  // msg is a length-delimited SCTP payload, not NUL-terminated -- copy exactly
+  // `len` bytes into a terminated buffer before treating it as a C string.
+  char *terminated_msg = (char *)malloc(len + 1);
+  if (terminated_msg == NULL) {
+    ESP_LOGE(LOG_TAG, "Failed to allocate datachannel message buffer");
+    return;
+  }
+  memcpy(terminated_msg, msg, len);
+  terminated_msg[len] = '\0';
+
 #ifdef LOG_DATACHANNEL_MESSAGES
-  ESP_LOGI(LOG_TAG, "DataChannel Message: %s", msg);
+  ESP_LOGI(LOG_TAG, "DataChannel Message: %s", terminated_msg);
 #endif
-  pipecat_rtvi_handle_message(msg);
+  pipecat_rtvi_handle_message(terminated_msg);
+  free(terminated_msg);
 }
 
 static void pipecat_ondatachannel_onopen_task(void *userdata) {

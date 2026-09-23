@@ -86,8 +86,8 @@ void double_volume(int16_t *samples, size_t num_samples) {
 }
 
 void pipecat_audio_decode(uint8_t *data, size_t size) {
-  int decoded_size =
-      opus_decode(opus_decoder, data, size, decoder_buffer, PCM_BUFFER_SIZE, 0);
+  int decoded_size = opus_decode(opus_decoder, data, size, decoder_buffer,
+                                 PCM_BUFFER_SIZE / sizeof(opus_int16), 0);
 
   if (decoded_size > 0) {
     set_is_playing(decoder_buffer, decoded_size);
