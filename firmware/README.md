@@ -95,6 +95,7 @@ scaffold:
   interrupted by voice.
 - **Reconnect is a reboot.** Any WebRTC disconnect, or a malformed signaling
   response, calls `esp_restart()` rather than retrying in place.
-- **The display only shows the boot banner.** `rtvi.cpp` never sends
-  `client-ready`, and the RTVI screen callbacks in `rtvi_callbacks.cpp` are
-  commented out upstream, so nothing renders once the app is running.
+- **The display only shows the boot banner.** The RTVI screen callbacks in
+  `rtvi_callbacks.cpp` are commented out upstream, so nothing renders once the
+  app is running (this repo's `webrtc.cpp` does send `client-ready` once the
+  datachannel opens -- the callbacks themselves are just no-ops).
