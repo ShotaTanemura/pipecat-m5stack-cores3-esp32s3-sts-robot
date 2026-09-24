@@ -32,8 +32,11 @@
 // (arbitrary libpeer task) and the audio task that drains it into the speaker.
 #define PLAYBACK_QUEUE_DEPTH 10
 
+// Ground truth for "is the bot speaking", driven by RTVI's bot-started/stopped-speaking
+// events (rtvi_callbacks.cpp) rather than inspecting decoded sample values -- the old
+// heuristic ("every sample in {-1,0,1}" over 20 frames) misread quiet speech as silence
+// and loud background noise as speech.
 std::atomic<bool> is_playing = false;
-unsigned int silence_count = 0;
 
 // Decoded PCM frames queued here by pipecat_audio_decode() and drained by
 // pipecat_send_audio(), which is the only thing that touches the (now persistent) I2S TX
@@ -41,25 +44,8 @@ unsigned int silence_count = 0;
 // byte blobs is sufficient; opus_decode always fills up to that many samples per call.
 static QueueHandle_t playback_queue = NULL;
 
-void set_is_playing(int16_t *in_buf, size_t in_samples) {
-  bool any_set = false;
-  for (size_t i = 0; i < in_samples; i++) {
-    if (in_buf[i] != -1 && in_buf[i] != 0 && in_buf[i] != 1) {
-      any_set = true;
-    }
-  }
-
-  if (any_set) {
-    silence_count = 0;
-  } else {
-    silence_count++;
-  }
-
-  if (silence_count >= 20 && is_playing) {
-    is_playing = false;
-  } else if (any_set && !is_playing) {
-    is_playing = true;
-  }
+void pipecat_set_bot_speaking(bool speaking) {
+  is_playing = speaking;
 }
 
 void pipecat_init_audio_capture() {
@@ -102,17 +88,14 @@ void pipecat_audio_decode(uint8_t *data, size_t size) {
                                  PCM_BUFFER_SIZE / sizeof(opus_int16), 0);
 
   if (decoded_size > 0) {
-    set_is_playing(decoder_buffer, decoded_size);
-    if (is_playing) {
-      double_volume(decoder_buffer, decoded_size);
-      // decoder_buffer holds up to PCM_BUFFER_SIZE/sizeof(opus_int16) samples; zero-pad
-      // a short frame so the queued blob is always a full PCM_BUFFER_SIZE frame.
-      int16_t frame[PCM_BUFFER_SIZE / sizeof(int16_t)] = {0};
-      memcpy(frame, decoder_buffer, decoded_size * sizeof(int16_t));
-      // Drop the frame rather than block: a full queue means playback is already
-      // behind, and blocking here would stall the datachannel/webrtc task calling us.
-      xQueueSend(playback_queue, frame, 0);
-    }
+    double_volume(decoder_buffer, decoded_size);
+    // decoder_buffer holds up to PCM_BUFFER_SIZE/sizeof(opus_int16) samples; zero-pad
+    // a short frame so the queued blob is always a full PCM_BUFFER_SIZE frame.
+    int16_t frame[PCM_BUFFER_SIZE / sizeof(int16_t)] = {0};
+    memcpy(frame, decoder_buffer, decoded_size * sizeof(int16_t));
+    // Drop the frame rather than block: a full queue means playback is already behind,
+    // and blocking here would stall the datachannel/webrtc task calling us.
+    xQueueSend(playback_queue, frame, 0);
   }
 }
 
@@ -153,7 +136,11 @@ void pipecat_send_audio(PeerConnection *peer_connection) {
   // RX is always read too (full duplex, one persistent bus); the mic is still muted
   // towards the peer while the bot is speaking -- true barge-in is a later change.
   pipecat_audio_hw_read(read_buffer, PCM_BUFFER_SIZE / sizeof(int16_t));
-  if (is_playing) {
+  // Floor: keep the mic muted while the playback queue still holds unplayed audio, even
+  // after RTVI's bot-stopped-speaking event -- that event can arrive before the last
+  // decoded frames have drained (pipecat's TransportParams defaults to ~2s of trailing
+  // silence packets after the bot actually stops).
+  if (is_playing || uxQueueMessagesWaiting(playback_queue) > 0) {
     memset(read_buffer, 0, PCM_BUFFER_SIZE);
   }
 
