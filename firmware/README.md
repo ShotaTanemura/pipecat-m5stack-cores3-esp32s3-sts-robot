@@ -90,9 +90,6 @@ avoid needing root).
 Carried as-is from `pipecat-esp32`; fixing these is follow-up work, not part of this
 scaffold:
 
-- **Half-duplex audio.** CoreS3 shares one I2S bus between mic and speaker, so
-  `media.cpp` stops the mic while the bot is speaking -- the device cannot be
-  interrupted by voice.
 - **Reconnect is a reboot.** Any WebRTC disconnect, or a malformed signaling
   response, calls `esp_restart()` rather than retrying in place.
 - **The display only shows the boot banner.** The RTVI screen callbacks in
