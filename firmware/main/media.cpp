@@ -17,6 +17,7 @@
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "aec.h"
 #include "audio_hw.h"
 #include "main.h"
 
@@ -33,9 +34,9 @@
 #define PLAYBACK_QUEUE_DEPTH 10
 
 // Ground truth for "is the bot speaking", driven by RTVI's bot-started/stopped-speaking
-// events (rtvi_callbacks.cpp) rather than inspecting decoded sample values -- the old
-// heuristic ("every sample in {-1,0,1}" over 20 frames) misread quiet speech as silence
-// and loud background noise as speech.
+// events (rtvi_callbacks.cpp). No longer used to gate the mic (AEC below runs full
+// duplex unconditionally) -- kept for future display/logging use, matching
+// rtvi_callbacks.cpp's existing (currently commented-out) screen-log call sites.
 std::atomic<bool> is_playing = false;
 
 // Decoded PCM frames queued here by pipecat_audio_decode() and drained by
@@ -46,12 +47,19 @@ static QueueHandle_t playback_queue = NULL;
 
 void pipecat_set_bot_speaking(bool speaking) {
   is_playing = speaking;
+  if (!speaking) {
+    // Flush any already-decoded, not-yet-played audio. With AEC, muting is no longer how
+    // the mic reopens for the peer, but a voice barge-in should still stop stale bot
+    // audio from continuing to play out of the speaker.
+    xQueueReset(playback_queue);
+  }
 }
 
 void pipecat_init_audio_capture() {
   playback_queue =
       xQueueCreate(PLAYBACK_QUEUE_DEPTH, PCM_BUFFER_SIZE);
   pipecat_audio_hw_init();
+  pipecat_aec_init();
 }
 
 opus_int16 *decoder_buffer = NULL;
@@ -133,18 +141,16 @@ void pipecat_send_audio(PeerConnection *peer_connection) {
   xQueueReceive(playback_queue, playback_frame, 0);
   pipecat_audio_hw_write(playback_frame, PCM_BUFFER_SIZE / sizeof(int16_t));
 
-  // RX is always read too (full duplex, one persistent bus); the mic is still muted
-  // towards the peer while the bot is speaking -- true barge-in is a later change.
+  // RX is always read too (full duplex, one persistent bus).
   pipecat_audio_hw_read(read_buffer, PCM_BUFFER_SIZE / sizeof(int16_t));
-  // Floor: keep the mic muted while the playback queue still holds unplayed audio, even
-  // after RTVI's bot-stopped-speaking event -- that event can arrive before the last
-  // decoded frames have drained (pipecat's TransportParams defaults to ~2s of trailing
-  // silence packets after the bot actually stops).
-  if (is_playing || uxQueueMessagesWaiting(playback_queue) > 0) {
-    memset(read_buffer, 0, PCM_BUFFER_SIZE);
-  }
 
-  auto encoded_size = opus_encode(opus_encoder, (const opus_int16 *)read_buffer,
+  // Echo cancellation, fed the exact frame just written to the speaker as the reference
+  // -- true full duplex: no mic muting, real voice barge-in is now possible.
+  int16_t aec_out[PCM_BUFFER_SIZE / sizeof(int16_t)];
+  pipecat_aec_process(read_buffer, playback_frame, aec_out,
+                      PCM_BUFFER_SIZE / sizeof(int16_t));
+
+  auto encoded_size = opus_encode(opus_encoder, (const opus_int16 *)aec_out,
                                   PCM_BUFFER_SIZE / sizeof(uint16_t),
                                   encoder_output_buffer, OPUS_BUFFER_SIZE);
   peer_connection_send_audio(peer_connection, encoder_output_buffer,

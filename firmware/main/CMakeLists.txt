@@ -1,5 +1,5 @@
 idf_component_register(
-	SRCS "webrtc.cpp" "main.cpp" "http.cpp" "wifi.cpp" "media.cpp" "audio_hw.cpp" "rtvi.cpp" "rtvi_callbacks.cpp"
+	SRCS "webrtc.cpp" "main.cpp" "http.cpp" "wifi.cpp" "media.cpp" "audio_hw.cpp" "aec.cpp" "rtvi.cpp" "rtvi_callbacks.cpp"
 	REQUIRES driver esp_wifi nvs_flash peer esp_psram esp-libopus esp_http_client json)
 
 idf_component_get_property(lib peer COMPONENT_LIB)
