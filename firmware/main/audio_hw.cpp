@@ -23,9 +23,12 @@
 #define PIN_DOUT GPIO_NUM_13  // to AW88298 (speaker)
 #define PIN_DIN GPIO_NUM_14   // from ES7210 (mic)
 
-// M5Unified applies this as a post-DMA-read software multiplier (Mic_Class mic_cfg.magnification);
-// ES7210 hardware gain (MIC1_GAIN/MIC2_GAIN below) is unchanged from M5Unified's values.
-#define MIC_GAIN 2
+// M5Unified's own net software gain for this exact board config is 1.0x, not 2x:
+// Mic_Class.inl computes f_gain = mic_cfg.magnification / (mic_cfg.over_sampling << 1),
+// and CoreS3 sets magnification=2, over_sampling=1 -> 2/2 = 1.0. Match that here rather
+// than introduce an unreviewed loudness change; ES7210 hardware gain (MIC1_GAIN/
+// MIC2_GAIN below) is unchanged from M5Unified's values regardless.
+#define MIC_GAIN 1
 
 static const uint8_t AW9523_I2C_ADDR = 0x58;
 static const uint8_t ES7210_I2C_ADDR = 0x40;
@@ -128,23 +131,19 @@ static void i2s_full_duplex_init() {
           },
   };
 
-  // Speaker (AW88298) is mono on CoreS3 -- one data line, one slot.
-  i2s_std_config_t tx_std_cfg = {
-      .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_HW_SAMPLE_RATE),
-      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
-          I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
-      .gpio_cfg = gpio_cfg,
-  };
-  ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle, &tx_std_cfg));
-
-  // Mic (ES7210) drives MIC1/MIC2 as stereo slots; only the left slot (MIC1) is read.
-  i2s_std_config_t rx_std_cfg = {
+  // ESP-IDF's full-duplex TX/RX pair shares BCLK/WS, and its own docs require both
+  // channels use the same std_cfg (including slot_cfg) in that mode -- so both are
+  // stereo here, even though the AW88298 (speaker) only physically wires up one data
+  // line: pipecat_audio_hw_write() duplicates its mono sample into both slots, and
+  // pipecat_audio_hw_read() mixes both of the mic's two slots (MIC1 + MIC2) down to mono.
+  i2s_std_config_t std_cfg = {
       .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_HW_SAMPLE_RATE),
       .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
           I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
       .gpio_cfg = gpio_cfg,
   };
-  ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle, &rx_std_cfg));
+  ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle, &std_cfg));
+  ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle, &std_cfg));
 
   ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
   ESP_ERROR_CHECK(i2s_channel_enable(rx_handle));
@@ -166,14 +165,24 @@ void pipecat_audio_hw_init() {
 #define I2S_TIMEOUT_MS 1000
 
 void pipecat_audio_hw_read(int16_t *out, size_t samples) {
-  // One stereo frame is 2 int16_t (L+R); read samples*2 int16_t and keep the left (MIC1).
+  // One stereo frame is 2 int16_t (L=MIC1, R=MIC2). Mix down like M5Unified's own mono
+  // capture path does for this board (Mic_Class.inl's in_stereo branch: average, then
+  // gain, then clamp) rather than discarding MIC2 and risking int16 wraparound on a
+  // plain multiply.
   static int16_t stereo_buf[AUDIO_HW_MAX_FRAME_SAMPLES * 2];
   size_t bytes_read = 0;
   i2s_channel_read(rx_handle, stereo_buf, samples * 2 * sizeof(int16_t),
                    &bytes_read, I2S_TIMEOUT_MS);
   size_t frames_read = bytes_read / (2 * sizeof(int16_t));
   for (size_t i = 0; i < frames_read; i++) {
-    out[i] = (int16_t)((int32_t)stereo_buf[i * 2] * MIC_GAIN);
+    int32_t mixed = ((int32_t)stereo_buf[i * 2] + (int32_t)stereo_buf[i * 2 + 1] + 1) >> 1;
+    int32_t amplified = mixed * MIC_GAIN;
+    if (amplified > INT16_MAX) {
+      amplified = INT16_MAX;
+    } else if (amplified < INT16_MIN) {
+      amplified = INT16_MIN;
+    }
+    out[i] = (int16_t)amplified;
   }
   for (size_t i = frames_read; i < samples; i++) {
     out[i] = 0;
@@ -181,7 +190,16 @@ void pipecat_audio_hw_read(int16_t *out, size_t samples) {
 }
 
 void pipecat_audio_hw_write(const int16_t *in, size_t samples) {
+  // The TX channel is configured stereo to match RX (ESP-IDF requires identical
+  // std_cfg -- including slot_cfg -- for a full-duplex TX/RX pair sharing BCLK/WS);
+  // the AW88298 only wires up one physical data line, so duplicate the mono sample
+  // into both slots.
+  static int16_t stereo_buf[AUDIO_HW_MAX_FRAME_SAMPLES * 2];
+  for (size_t i = 0; i < samples; i++) {
+    stereo_buf[i * 2] = in[i];
+    stereo_buf[i * 2 + 1] = in[i];
+  }
   size_t bytes_written = 0;
-  i2s_channel_write(tx_handle, in, samples * sizeof(int16_t), &bytes_written,
-                    I2S_TIMEOUT_MS);
+  i2s_channel_write(tx_handle, stereo_buf, samples * 2 * sizeof(int16_t),
+                    &bytes_written, I2S_TIMEOUT_MS);
 }
