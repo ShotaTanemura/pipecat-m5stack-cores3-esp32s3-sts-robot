@@ -6,10 +6,12 @@
 #include "main.h"
 
 static void on_bot_started_speaking() {
+  pipecat_set_bot_speaking(true);
   // pipecat_screen_new_log();
 }
 
 static void on_bot_stopped_speaking() {
+  pipecat_set_bot_speaking(false);
   // pipecat_screen_log("\n");
 }
 

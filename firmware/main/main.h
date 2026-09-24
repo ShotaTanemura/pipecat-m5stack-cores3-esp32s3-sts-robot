@@ -21,6 +21,8 @@ extern void pipecat_init_audio_decoder();
 extern void pipecat_init_audio_encoder();
 extern void pipecat_send_audio(PeerConnection *peer_connection);
 extern void pipecat_audio_decode(uint8_t *data, size_t size);
+// Ground truth for "is the bot speaking", set from the RTVI callbacks below.
+extern void pipecat_set_bot_speaking(bool speaking);
 
 // WebRTC / Signalling
 extern void pipecat_init_webrtc();
