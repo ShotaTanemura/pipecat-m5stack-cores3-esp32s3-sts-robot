@@ -11,9 +11,13 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "audio_hw.h"
 #include "main.h"
 
 #define SAMPLE_RATE (16000)
@@ -24,8 +28,18 @@
 #define OPUS_ENCODER_BITRATE 30000
 #define OPUS_ENCODER_COMPLEXITY 0
 
+// Depth chosen for ~200ms of buffering (10 * 20ms frames) between the decode callback
+// (arbitrary libpeer task) and the audio task that drains it into the speaker.
+#define PLAYBACK_QUEUE_DEPTH 10
+
 std::atomic<bool> is_playing = false;
 unsigned int silence_count = 0;
+
+// Decoded PCM frames queued here by pipecat_audio_decode() and drained by
+// pipecat_send_audio(), which is the only thing that touches the (now persistent) I2S TX
+// channel. Frames are fixed-size (PCM_BUFFER_SIZE bytes = 320 samples) so a queue of
+// byte blobs is sufficient; opus_decode always fills up to that many samples per call.
+static QueueHandle_t playback_queue = NULL;
 
 void set_is_playing(int16_t *in_buf, size_t in_samples) {
   bool any_set = false;
@@ -42,18 +56,16 @@ void set_is_playing(int16_t *in_buf, size_t in_samples) {
   }
 
   if (silence_count >= 20 && is_playing) {
-    M5.Speaker.end();
-    M5.Mic.begin();
     is_playing = false;
   } else if (any_set && !is_playing) {
-    M5.Mic.end();
-    M5.Speaker.begin();
     is_playing = true;
   }
 }
 
 void pipecat_init_audio_capture() {
-  M5.Speaker.setVolume(255);
+  playback_queue =
+      xQueueCreate(PLAYBACK_QUEUE_DEPTH, PCM_BUFFER_SIZE);
+  pipecat_audio_hw_init();
 }
 
 opus_int16 *decoder_buffer = NULL;
@@ -93,7 +105,13 @@ void pipecat_audio_decode(uint8_t *data, size_t size) {
     set_is_playing(decoder_buffer, decoded_size);
     if (is_playing) {
       double_volume(decoder_buffer, decoded_size);
-      M5.Speaker.playRaw(decoder_buffer, decoded_size, SAMPLE_RATE);
+      // decoder_buffer holds up to PCM_BUFFER_SIZE/sizeof(opus_int16) samples; zero-pad
+      // a short frame so the queued blob is always a full PCM_BUFFER_SIZE frame.
+      int16_t frame[PCM_BUFFER_SIZE / sizeof(int16_t)] = {0};
+      memcpy(frame, decoder_buffer, decoded_size * sizeof(int16_t));
+      // Drop the frame rather than block: a full queue means playback is already
+      // behind, and blocking here would stall the datachannel/webrtc task calling us.
+      xQueueSend(playback_queue, frame, 0);
     }
   }
 }
@@ -126,11 +144,17 @@ void pipecat_init_audio_encoder() {
 }
 
 void pipecat_send_audio(PeerConnection *peer_connection) {
+  // TX must be kept fed every iteration to hold the shared I2S clock steady -- silence
+  // on underrun rather than skipping the write.
+  int16_t playback_frame[PCM_BUFFER_SIZE / sizeof(int16_t)] = {0};
+  xQueueReceive(playback_queue, playback_frame, 0);
+  pipecat_audio_hw_write(playback_frame, PCM_BUFFER_SIZE / sizeof(int16_t));
+
+  // RX is always read too (full duplex, one persistent bus); the mic is still muted
+  // towards the peer while the bot is speaking -- true barge-in is a later change.
+  pipecat_audio_hw_read(read_buffer, PCM_BUFFER_SIZE / sizeof(int16_t));
   if (is_playing) {
     memset(read_buffer, 0, PCM_BUFFER_SIZE);
-    vTaskDelay(pdMS_TO_TICKS(20));
-  } else {
-    M5.Mic.record(read_buffer, PCM_BUFFER_SIZE / sizeof(uint16_t), SAMPLE_RATE);
   }
 
   auto encoded_size = opus_encode(opus_encoder, (const opus_int16 *)read_buffer,
