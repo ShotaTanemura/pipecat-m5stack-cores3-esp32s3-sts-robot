@@ -20,8 +20,9 @@ void pipecat_send_audio_task(void *user_data) {
   pipecat_init_audio_encoder();
 
   while (1) {
+    // Paced by the blocking I2S read/write inside pipecat_send_audio() (full-duplex,
+    // persistent bus) -- no separate delay needed.
     pipecat_send_audio(peer_connection);
-    vTaskDelay(pdMS_TO_TICKS(TICK_INTERVAL));
   }
 }
 #endif
